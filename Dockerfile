@@ -29,7 +29,5 @@ RUN fix-permissions /opt/install
 USER $NB_USER
 
 RUN cd /opt/install && \
-   conda env update -n base --file environment.yml && \
-   pip install -e .
-
+   conda env update -n base --file environment.yml
 
