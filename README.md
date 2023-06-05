@@ -13,13 +13,13 @@ Below an example of configuration in the ApplicationHub:
   groups: 
   - group-1
   definition:
-      display_name: Remote Desktop
-      slug: iga_remote_desktop
-      default: False
-      kubespawner_override:
-        cpu_limit: 1
-        mem_limit: 4G
-        image:  eoepca/iga-remote-desktop
+    display_name: Remote Desktop
+    slug: iga_remote_desktop
+    default: False
+    kubespawner_override:
+      cpu_limit: 1
+      mem_limit: 4G
+      image:  eoepca/iga-remote-desktop
   default_url: "desktop"
   node_selector: 
     k8s.provider.com/pool-name: node-pool-a
