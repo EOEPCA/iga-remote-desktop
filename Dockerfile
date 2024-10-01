@@ -11,7 +11,9 @@ RUN apt-get -y update \
    xfce4-settings \
    xorg \
    xubuntu-icon-theme \
-   libtbb2
+   libtbb2 \
+   curl \
+   vim
 
 # Remove light-locker to prevent screen lock
 RUN wget -q 'https://sourceforge.net/projects/turbovnc/files/2.2.5/turbovnc_2.2.5_amd64.deb/download' -O turbovnc_2.2.5_amd64.deb && \
@@ -25,6 +27,8 @@ RUN chown -R $NB_UID:$NB_GID $HOME
 
 ADD . /opt/install
 RUN fix-permissions /opt/install
+
+RUN echo "${NB_USER}:pass" | chpasswd
 
 USER $NB_USER
 
