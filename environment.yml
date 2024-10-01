@@ -2,7 +2,7 @@ channels:
   - conda-forge
 dependencies:
   - jupyter-server-proxy>=1.4
-  - jupyterhub==3.0.0
+  - jupyterhub
   - pip
   - websockify
   - pip:
