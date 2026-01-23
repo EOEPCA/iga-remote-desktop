@@ -77,5 +77,7 @@ RUN conda env update -n base -f /tmp/environment.yaml && \
 
 USER root
 RUN cp /usr/lib/websockify/rebind.so \
-  /opt/conda/lib/python3.11/site-packages/websockify/
+  /opt/conda/lib/python3.11/site-packages/websockify/ && \
+  cp /usr/lib/websockify/rebind.so \
+  /opt/conda/lib/rebind.so
 USER ${NB_USER}
