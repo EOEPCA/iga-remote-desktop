@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+dependencies:
+  - pip
+  - pip:
+      - jupyter-remote-desktop-proxy==2.0.1 
+      - jupyter-server-proxy 
+      - jupyterhub==4.0.2 
+      - websockify==0.12.0
+  
