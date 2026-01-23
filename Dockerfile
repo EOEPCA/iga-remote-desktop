@@ -1,9 +1,19 @@
+# Interactive Jupyter-based EO development environment.
+# Includes desktop UI and browser.
+# Not intended as a minimal runtime image.
 FROM jupyter/base-notebook:python-3.11.6
 
 USER root
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -y update \
- && apt-get install -y dbus-x11 \
+ && apt-get install -y --no-install-recommends \
+   dbus-x11 \
+   ca-certificates \
+   git \
+   wget \
+   file \
+   tree \
    firefox \
    xfce4 \
    xfce4-panel \
@@ -13,13 +23,16 @@ RUN apt-get -y update \
    xubuntu-icon-theme \
    libtbb2 \
    curl \
-   vim
+   vim \
+   && apt-get clean \
+   && rm -rf /var/lib/apt/lists/*
 
 # Remove light-locker to prevent screen lock
-RUN wget -q 'https://sourceforge.net/projects/turbovnc/files/2.2.5/turbovnc_2.2.5_amd64.deb/download' -O turbovnc_2.2.5_amd64.deb && \
-   apt-get install -y -q ./turbovnc_2.2.5_amd64.deb && \
+ARG TURBOVNC_VERSION=2.2.5
+RUN wget -q https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VERSION}/turbovnc_${TURBOVNC_VERSION}_amd64.deb -O turbovnc_${TURBOVNC_VERSION}_amd64.deb && \
+   apt-get install -y -q ./turbovnc_${TURBOVNC_VERSION}_amd64.deb && \
    apt-get remove -y -q light-locker && \
-   rm ./turbovnc_2.2.5_amd64.deb && \
+   rm ./turbovnc_${TURBOVNC_VERSION}_amd64.deb && \
    ln -s /opt/TurboVNC/bin/* /usr/local/bin/
 
 # apt-get may result in root-owned directories/files under $HOME
@@ -28,10 +41,35 @@ RUN chown -R $NB_UID:$NB_GID $HOME
 ADD . /opt/install
 RUN fix-permissions /opt/install
 
-RUN echo "${NB_USER}:pass" | chpasswd
+ARG USERPWD=pass
+RUN echo "${NB_USER}:${USERPWD}" | chpasswd
 
-USER $NB_USER
+RUN pip install --no-cache-dir \
+      jupyter-server-proxy>=1.4 \
+      jupyterhub \
+      pip \
+      websockify \
+      jupyter-remote-desktop-proxy
 
-RUN cd /opt/install && \
-   conda env update -n base --file environment.yml
+# -------------------------------------------------------------------
+# hatch
+# -------------------------------------------------------------------
+ARG HATCH_VERSION=1.16.2
+RUN curl -fsSL \
+    "https://github.com/pypa/hatch/releases/download/hatch-v${HATCH_VERSION}/hatch-x86_64-unknown-linux-gnu.tar.gz" \
+    | tar -xz -C /usr/local/bin hatch && chmod +x /usr/local/bin/hatch
 
+# -------------------------------------------------------------------
+# yq / jq
+# -------------------------------------------------------------------
+ARG YQ_VERSION=v4.45.1
+RUN curl -fsSL \
+    "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+    -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
+ARG JQ_VERSION=jq-1.8.1
+RUN curl -fsSL \
+    "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64" \
+    -o /usr/local/bin/jq && chmod +x /usr/local/bin/jq
+
+USER ${NB_USER}
