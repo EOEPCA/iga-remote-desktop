@@ -71,13 +71,13 @@ RUN curl -fsSL \
 
 USER ${NB_USER}
 
-COPY environment.yaml /tmp/environment.yaml
-RUN conda env update -n base -f /tmp/environment.yaml && \
-    conda clean -afy
+COPY requirements.txt /tmp/requirements.txt
+RUN /opt/conda/bin/pip install -r /tmp/requirements.txt
 
 USER root
 RUN cp /usr/lib/websockify/rebind.so \
   /opt/conda/lib/python3.11/site-packages/websockify/ && \
   cp /usr/lib/websockify/rebind.so \
-  /opt/conda/lib/rebind.so
+  /opt/conda/lib/rebind.so \
+  && rm -fr /tmp/requirements.txt
 USER ${NB_USER}
