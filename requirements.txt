@@ -1,4 +1,4 @@
 jupyter-remote-desktop-proxy==2.0.1
 jupyter-server-proxy==4.4.0
-jupyterhub==4.0.2
+jupyterhub==4.1.6
 websockify==0.12.0
