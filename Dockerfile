@@ -23,9 +23,7 @@ RUN apt-get -y update \
    xubuntu-icon-theme \
    libtbb2 \
    curl \
-   vim \
-   && apt-get clean \
-   && rm -rf /var/lib/apt/lists/*
+   vim
 
 # Remove light-locker to prevent screen lock
 ARG TURBOVNC_VERSION=2.2.5
@@ -33,7 +31,9 @@ RUN wget -q https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VE
    apt-get install -y -q ./turbovnc_${TURBOVNC_VERSION}_amd64.deb && \
    apt-get remove -y -q light-locker && \
    rm ./turbovnc_${TURBOVNC_VERSION}_amd64.deb && \
-   ln -s /opt/TurboVNC/bin/* /usr/local/bin/
+   ln -s /opt/TurboVNC/bin/* /usr/local/bin/  \
+   && apt-get clean \
+   && rm -rf /var/lib/apt/lists/*
 
 # apt-get may result in root-owned directories/files under $HOME
 RUN chown -R $NB_UID:$NB_GID $HOME

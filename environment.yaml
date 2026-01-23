@@ -1,9 +1,10 @@
 channels:
   - conda-forge
 dependencies:
-  - jupyter-server-proxy>=1.4
-  - jupyterhub
   - pip
-  - websockify
   - pip:
-      - jupyter-remote-desktop-proxy
+      - jupyter-remote-desktop-proxy==2.0.1 
+      - jupyter-server-proxy 
+      - jupyterhub==4.0.2 
+      - websockify==0.12.0
+  
