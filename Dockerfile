@@ -36,6 +36,9 @@ RUN wget -q https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VE
    && apt-get clean \
    && rm -rf /var/lib/apt/lists/*
 
+
+
+
 # apt-get may result in root-owned directories/files under $HOME
 RUN chown -R $NB_UID:$NB_GID $HOME
 
@@ -71,3 +74,8 @@ USER ${NB_USER}
 COPY environment.yaml /tmp/environment.yaml
 RUN conda env update -n base -f /tmp/environment.yaml && \
     conda clean -afy
+
+USER root
+RUN cp /usr/lib/websockify/rebind.so \
+  /opt/conda/lib/python3.11/site-packages/websockify/
+USER ${NB_USER}
