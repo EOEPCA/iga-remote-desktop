@@ -15,6 +15,7 @@ RUN apt-get -y update \
    file \
    tree \
    firefox \
+   websockify \
    xfce4 \
    xfce4-panel \
    xfce4-session \
