@@ -38,18 +38,11 @@ RUN wget -q https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VE
 # apt-get may result in root-owned directories/files under $HOME
 RUN chown -R $NB_UID:$NB_GID $HOME
 
-ADD . /opt/install
-RUN fix-permissions /opt/install
+# ADD . /opt/install
+# RUN fix-permissions /opt/install
 
 ARG USERPWD=pass
 RUN echo "${NB_USER}:${USERPWD}" | chpasswd
-
-RUN pip install --no-cache-dir \
-      jupyter-server-proxy>=1.4 \
-      jupyterhub \
-      pip \
-      websockify \
-      jupyter-remote-desktop-proxy
 
 # -------------------------------------------------------------------
 # hatch
@@ -73,3 +66,7 @@ RUN curl -fsSL \
     -o /usr/local/bin/jq && chmod +x /usr/local/bin/jq
 
 USER ${NB_USER}
+
+COPY environment.yaml /tmp/environment.yaml
+RUN conda env update -n base -f /tmp/environment.yaml && \
+    conda clean -afy
