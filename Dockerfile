@@ -26,6 +26,13 @@ RUN apt-get -y update \
    curl \
    vim
 
+RUN apt-get update && apt-get install -y \
+    software-properties-common && \
+    add-apt-repository -y ppa:nextcloud-devs/client && \
+    apt-get update && \
+    apt-get install -y nextcloud-desktop-cmd=4.0.6-20260122.174414.847472c1e7-1.0~jammy1 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Remove light-locker to prevent screen lock
 ARG TURBOVNC_VERSION=3.2.1
 RUN wget -q https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VERSION}/turbovnc_${TURBOVNC_VERSION}_amd64.deb -O turbovnc_${TURBOVNC_VERSION}_amd64.deb && \
@@ -68,6 +75,10 @@ ARG JQ_VERSION=jq-1.8.1
 RUN curl -fsSL \
     "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64" \
     -o /usr/local/bin/jq && chmod +x /usr/local/bin/jq
+
+COPY nc-sync /usr/local/bin/nc-sync
+RUN chmod 755 /usr/local/bin/nc-sync
+COPY nc-sync.desktop /etc/xdg/autostart/nc-sync.desktop
 
 USER ${NB_USER}
 
