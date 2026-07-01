@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     software-properties-common && \
     add-apt-repository -y ppa:nextcloud-devs/client && \
     apt-get update && \
-    apt-get install -y nextcloud-desktop-cmd=33.0.1-20260330.095510.8ff41bf9ac-1.0~jammy1 && \
+    apt-get install -y nextcloud-desktop-cmd=33.0.7-20260629.141713.497d6610b3-1.0~jammy1 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Remove light-locker to prevent screen lock
