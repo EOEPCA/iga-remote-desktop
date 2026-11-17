@@ -5,21 +5,35 @@ on:
     branches: [develop, main]
     tags:
       - 'v*'
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
 
 jobs:
   # ------------------------------------------------------------
   # Resolve release tag from ref
   # ------------------------------------------------------------
   release-meta:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-      - id: meta
+      - name: Install pinned yq
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
+          curl -fsSL https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 -o yq
+          sudo install yq /usr/local/bin/yq
+      - id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            TAG="pr-test"
+          elif [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
             TAG="latest-dev"
           elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
             TAG="latest"
@@ -51,49 +65,37 @@ jobs:
   # ------------------------------------------------------------
   build-scan-push:
     needs: release-meta
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
       - name: Install tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y jq skopeo
-          curl -sL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz | tar -xz oras
-          sudo mv oras /usr/local/bin/oras
+          curl -fsSL https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 -o yq
+          sudo install yq /usr/local/bin/yq
+          curl -fsSL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz | tar -xz oras
+          sudo install oras /usr/local/bin/oras
 
-      - name: Configure Docker Hub auth for Kaniko
-        run: |
-          if [[ -n "${{ secrets.dockerhub-username }}" ]]; then
-            mkdir -p $HOME/.docker
-            cat > $HOME/.docker/config.json <<EOF
-          {
-              "auths": {
-                "https://index.docker.io/v1/": {
-                  "auth": "$(echo -n "${{ secrets.dockerhub-username }}:${{ secrets.dockerhub-token }}" | base64 -w0)"
-                }
-              }
-          }
-          EOF
-          fi
-
-      - name: Build image with Kaniko (to tar)
-        uses: docker://gcr.io/kaniko-project/executor:debug
-        env:
-          DOCKER_CONFIG: /github/home/.docker
+      - name: Build image with Buildx (to tar)
+        uses: docker/build-push-action@v6
         with:
-          args: >
-            --context .
-            --dockerfile Dockerfile
-            --no-push
-            --tar-path image.tar
+          context: .
+          file: Dockerfile
+          push: false
+          outputs: type=docker,dest=image.tar
 
       # --------------------------------------------------------
-      # Trivy scan (relaxed for now)
+      # Trivy scan is report-only until a vulnerability gate is agreed.
       # --------------------------------------------------------
-      - name: Trivy scan (debug mode)
-        uses: docker://aquasec/trivy:0.50.2
+      - name: Trivy scan (report-only)
+        uses: docker://aquasec/trivy:0.76.2
         env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
         with:
@@ -105,7 +107,7 @@ jobs:
             --no-progress
 
       - name: Generate SBOM (SPDX JSON)
-        uses: docker://aquasec/trivy:0.50.2
+        uses: docker://aquasec/trivy:0.76.2
         env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
         with:
@@ -115,10 +117,18 @@ jobs:
             --format spdx-json
             --output sbom.spdx.json
 
+      - name: Retain SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.run_id }}
+          path: sbom.spdx.json
+          retention-days: 7
+
       # --------------------------------------------------------
-      # Push image and attach SBOM
+      # Publish the tested image archive
       # --------------------------------------------------------
       - name: Push image with Skopeo
+        if: github.event_name != 'pull_request'
         id: push
         run: |
           set -euo pipefail
