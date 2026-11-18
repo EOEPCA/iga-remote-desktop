@@ -14,26 +14,28 @@ ARG JQ_VERSION=jq-1.8.1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates curl \
+       ca-certificates \
+       curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /artifacts
 
-RUN test "${TARGETARCH}" = "amd64" \
-    && curl -fL --retry 3 \
-       "https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VERSION}/turbovnc_${TURBOVNC_VERSION}_amd64.deb" \
-       -o turbovnc.deb \
-    && curl -fL --retry 3 \
-       "https://github.com/pypa/hatch/releases/download/hatch-v${HATCH_VERSION}/hatch-x86_64-unknown-linux-gnu.tar.gz" \
-       -o hatch.tar.gz \
-    && tar -xzf hatch.tar.gz hatch \
-    && curl -fL --retry 3 \
-       "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
-       -o yq \
-    && curl -fL --retry 3 \
-       "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64" \
-       -o jq \
-    && chmod 755 hatch yq jq
+RUN set -eux; \
+    test "${TARGETARCH}" = "amd64"; \
+    curl -fL --retry 3 \
+      "https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VERSION}/turbovnc_${TURBOVNC_VERSION}_amd64.deb" \
+      -o turbovnc.deb; \
+    curl -fL --retry 3 \
+      "https://github.com/pypa/hatch/releases/download/hatch-v${HATCH_VERSION}/hatch-x86_64-unknown-linux-gnu.tar.gz" \
+      -o hatch.tar.gz; \
+    tar -xzf hatch.tar.gz hatch; \
+    curl -fL --retry 3 \
+      "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+      -o yq; \
+    curl -fL --retry 3 \
+      "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64" \
+      -o jq; \
+    chmod 755 hatch yq jq
 
 
 # ============================================================
@@ -47,41 +49,42 @@ USER root
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+
 # ------------------------------------------------------------
 # System dependencies and desktop environment
 # ------------------------------------------------------------
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends \
-       dbus-x11 \
-       ca-certificates \
-       git \
-       wget \
-       file \
-       tree \
-       firefox \
-       websockify \
-       xfce4 \
-       xfce4-panel \
-       xfce4-session \
-       xfce4-settings \
-       xorg \
-       xubuntu-icon-theme \
-       libtbb12 \
-       curl \
-       vim \
-       software-properties-common \
-       gnupg \
-    && (apt-get remove -y light-locker || true) \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    apt-get update; \
+    apt-get upgrade -y; \
+    apt-get install -y --no-install-recommends \
+      dbus-x11 \
+      ca-certificates \
+      git \
+      wget \
+      file \
+      tree \
+      firefox \
+      websockify \
+      xfce4 \
+      xfce4-panel \
+      xfce4-session \
+      xfce4-settings \
+      xorg \
+      xubuntu-icon-theme \
+      libtbb12 \
+      curl \
+      vim \
+      software-properties-common \
+      gnupg; \
+    (apt-get remove -y light-locker || true); \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 
 # ------------------------------------------------------------
 # Nextcloud Desktop CLI
 #
-# Preserve upstream build prefix:
-#   33.0.7-20260629
+# Required upstream version: 35.0.3
 #
 # Allow Ubuntu packaging suffixes such as:
 #   ~noble1
@@ -89,15 +92,33 @@ RUN apt-get update \
 #
 # Fail if no matching package exists.
 # ------------------------------------------------------------
+ARG NEXTCLOUD_VERSION=35.0.3
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends software-properties-common && \
-    add-apt-repository -y ppa:nextcloud-devs/client && \
-    apt-get update && \
-    VERSION=$(apt-cache madison nextcloud-desktop-cmd | awk '$3 ~ /^33\.0\.7-20260629([.+~-]|$)/ {print $3}' | sort -V | tail -1) && \
-    test -n "$VERSION" && \
-    apt-get install -y --no-install-recommends "nextcloud-desktop-cmd=$VERSION" && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    apt-get update -o Acquire::Retries=5; \
+    add-apt-repository -y ppa:nextcloud-devs/client; \
+    apt-get update \
+      -o Acquire::Retries=5 \
+      -o APT::Update::Error-Mode=any; \
+    apt-cache madison nextcloud-desktop-cmd; \
+    VERSION="$(apt-cache madison nextcloud-desktop-cmd \
+      | awk -v v="${NEXTCLOUD_VERSION}" \
+        '$3 == v || index($3, v ".") == 1 || \
+         index($3, v "+") == 1 || \
+         index($3, v "~") == 1 || \
+         index($3, v "-") == 1 {print $3}' \
+      | sort -V \
+      | tail -1)"; \
+    if [ -z "$VERSION" ]; then \
+      echo "ERROR: Nextcloud Desktop ${NEXTCLOUD_VERSION} is unavailable"; \
+      apt-cache policy nextcloud-desktop-cmd; \
+      exit 1; \
+    fi; \
+    echo "Installing nextcloud-desktop-cmd=${VERSION}"; \
+    apt-get install -y --no-install-recommends \
+      "nextcloud-desktop-cmd=${VERSION}"; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 
 # ------------------------------------------------------------
@@ -106,13 +127,14 @@ RUN apt-get update && \
 COPY --from=downloads \
     /artifacts/turbovnc.deb /tmp/turbovnc.deb
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       /tmp/turbovnc.deb \
-    && rm /tmp/turbovnc.deb \
-    && ln -s /opt/TurboVNC/bin/* /usr/local/bin/ \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      /tmp/turbovnc.deb; \
+    rm -f /tmp/turbovnc.deb; \
+    ln -s /opt/TurboVNC/bin/* /usr/local/bin/; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 
 # ------------------------------------------------------------
@@ -140,11 +162,40 @@ RUN chmod 755 /usr/local/bin/nc-sync
 
 
 # ------------------------------------------------------------
+# Python dependencies
+#
+# requirements-py313.lock must contain pinned versions.
+#
+# Fix Conda permissions before installing as NB_USER.
+# ------------------------------------------------------------
+COPY requirements-py313.lock \
+    /tmp/requirements-py313.lock
+
+USER root
+
+RUN set -eux; \
+    fix-permissions /opt/conda; \
+    fix-permissions "${HOME}"
+
+USER ${NB_USER}
+
+RUN set -eux; \
+    /opt/conda/bin/python -m pip install \
+      --no-cache-dir \
+      -r /tmp/requirements-py313.lock; \
+    /opt/conda/bin/python -m pip check
+
+
+# ------------------------------------------------------------
 # websockify native rebind.so
 #
-# Preserve existing integration without hardcoding
-# Python 3.11 site-packages.
+# Install after pip so that package upgrades cannot
+# overwrite the native integration.
+#
+# Do not hardcode Python 3.11 site-packages.
 # ------------------------------------------------------------
+USER root
+
 RUN set -eux; \
     rebind="$(find /usr/lib \
       -path '*/websockify/rebind.so' -print -quit)"; \
@@ -153,33 +204,18 @@ RUN set -eux; \
       'import site; print(site.getsitepackages()[0])')"; \
     mkdir -p "$target/websockify"; \
     cp "$rebind" "$target/websockify/rebind.so"; \
-    cp "$rebind" /opt/conda/lib/rebind.so
-
-
-# ------------------------------------------------------------
-# Python dependencies
-#
-# requirements-py313.lock must contain pinned versions.
-# ------------------------------------------------------------
-COPY requirements-py313.lock \
-    /tmp/requirements-py313.lock
-
-USER ${NB_USER}
-
-RUN /opt/conda/bin/python -m pip install \
-       --no-cache-dir \
-       -r /tmp/requirements-py313.lock \
-    && /opt/conda/bin/python -m pip check
+    cp "$rebind" /opt/conda/lib/rebind.so; \
+    chmod 644 \
+      "$target/websockify/rebind.so" \
+      /opt/conda/lib/rebind.so
 
 
 # ------------------------------------------------------------
 # Runtime EO dependency lock
 #
-# Used by the injected init.sh ConfigMap to create
+# Used by injected init.sh ConfigMap to create
 # /workspace/.venv.
 # ------------------------------------------------------------
-USER root
-
 RUN mkdir -p /opt/eo
 
 COPY requirements-runtime-py313.lock \
@@ -192,8 +228,10 @@ RUN chmod 644 \
 # ------------------------------------------------------------
 # Cleanup and permissions
 # ------------------------------------------------------------
-RUN rm -f /tmp/requirements-py313.lock \
-    && chown -R ${NB_UID}:${NB_GID} "${HOME}"
+RUN set -eux; \
+    rm -f /tmp/requirements-py313.lock; \
+    fix-permissions /opt/conda; \
+    fix-permissions "${HOME}"
 
 
 # ------------------------------------------------------------
@@ -207,12 +245,15 @@ RUN echo "${NB_USER}:${USERPWD}" | chpasswd
 # ------------------------------------------------------------
 # Build-time smoke checks
 # ------------------------------------------------------------
-RUN /opt/conda/bin/python -c \
-      'import sys; assert sys.version_info[:2] == (3, 13)' \
-    && hatch --version \
-    && yq --version \
-    && jq --version \
-    && nextcloudcmd --version
+RUN set -eux; \
+    /opt/conda/bin/python -c \
+      'import sys; assert sys.version_info[:2] == (3, 13)'; \
+    /opt/conda/bin/python -m pip check; \
+    hatch --version; \
+    yq --version; \
+    jq --version; \
+    nextcloudcmd --version; \
+    test -f /opt/conda/lib/rebind.so
 
 
 # ------------------------------------------------------------
