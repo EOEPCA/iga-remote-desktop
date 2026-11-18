@@ -89,24 +89,15 @@ RUN apt-get update \
 #
 # Fail if no matching package exists.
 # ------------------------------------------------------------
-ARG NEXTCLOUD_VERSION="33.0.7-20260629"
 
-RUN add-apt-repository -y ppa:nextcloud-devs/client \
-    && apt-get update \
-    && NEXTCLOUD_PACKAGE_VERSION="$( \
-         apt-cache madison nextcloud-desktop-cmd \
-         | awk -v prefix="${NEXTCLOUD_VERSION}" \
-           '$3 == prefix || index($3, prefix ".") == 1 { print $3 }' \
-         | sort -V \
-         | tail -n 1 \
-       )" \
-    && test -n "${NEXTCLOUD_PACKAGE_VERSION}" \
-    && echo "Installing Nextcloud: ${NEXTCLOUD_PACKAGE_VERSION}" \
-    && apt-get install -y --no-install-recommends \
-       "nextcloud-desktop-cmd=${NEXTCLOUD_PACKAGE_VERSION}" \
-    && apt-mark hold nextcloud-desktop-cmd \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:nextcloud-devs/client && \
+    apt-get update && \
+    VERSION=$(apt-cache madison nextcloud-desktop-cmd | awk '$3 ~ /^33\.0\.7-20260629([.+~-]|$)/ {print $3}' | sort -V | tail -1) && \
+    test -n "$VERSION" && \
+    apt-get install -y --no-install-recommends "nextcloud-desktop-cmd=$VERSION" && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
 # ------------------------------------------------------------
