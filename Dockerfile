@@ -2,63 +2,73 @@
 # syntax=docker/dockerfile:1.7
 
 # ============================================================
-# Stage 1: Download external binaries
+# Stage 1: Download verified external binaries
 # ============================================================
 FROM ubuntu:24.04 AS downloads
 
 ARG TARGETARCH=amd64
+
 ARG TURBOVNC_VERSION=3.2.1
-ARG HATCH_VERSION=1.16.2
-ARG YQ_VERSION=v4.45.1
+ARG YQ_VERSION=v4.54.3
 ARG JQ_VERSION=jq-1.8.1
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       ca-certificates \
-       curl \
-    && rm -rf /var/lib/apt/lists/*
+# Verified yq Linux amd64 release SHA256
+ARG YQ_SHA256=129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /artifacts
 
 RUN set -eux; \
     test "${TARGETARCH}" = "amd64"; \
-    curl -fL --retry 3 \
+    curl -fL --retry 5 --retry-delay 2 \
       "https://github.com/TurboVNC/turbovnc/releases/download/${TURBOVNC_VERSION}/turbovnc_${TURBOVNC_VERSION}_amd64.deb" \
       -o turbovnc.deb; \
-    curl -fL --retry 3 \
-      "https://github.com/pypa/hatch/releases/download/hatch-v${HATCH_VERSION}/hatch-x86_64-unknown-linux-gnu.tar.gz" \
-      -o hatch.tar.gz; \
-    tar -xzf hatch.tar.gz hatch; \
-    curl -fL --retry 3 \
+    curl -fL --retry 5 --retry-delay 2 \
       "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
       -o yq; \
-    curl -fL --retry 3 \
+    echo "${YQ_SHA256}  yq" | sha256sum -c -; \
+    curl -fL --retry 5 --retry-delay 2 \
       "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64" \
       -o jq; \
-    chmod 755 hatch yq jq
+    chmod 755 yq jq
 
 
 # ============================================================
 # Stage 2: Jupyter EO development environment
 # ============================================================
-# Python 3.13, Ubuntu 24.04 historical Jupyter build.
-# Pin the image by digest after validation.
+# Ubuntu 24.04 / Python 3.13
+#
+# Retained for compatibility with:
+# - Nextcloud Ubuntu PPA
+# - XFCE
+# - Existing Jupyter environment
+#
+# Pin by digest after successful validation.
+# ============================================================
 FROM quay.io/jupyter/base-notebook:ac62373f9f60
 
 USER root
 
-ENV DEBIAN_FRONTEND=noninteractive
-
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # ------------------------------------------------------------
-# System dependencies and desktop environment
+# System packages and desktop environment
 # ------------------------------------------------------------
 RUN set -eux; \
-    apt-get update; \
+    apt-get update -o Acquire::Retries=5; \
     apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
-      dbus-x11 \
       ca-certificates \
+      dbus-x11 \
       git \
       wget \
       file \
@@ -77,6 +87,7 @@ RUN set -eux; \
       software-properties-common \
       gnupg; \
     (apt-get remove -y light-locker || true); \
+    apt-get autoremove -y; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
@@ -84,13 +95,8 @@ RUN set -eux; \
 # ------------------------------------------------------------
 # Nextcloud Desktop CLI
 #
-# Required upstream version: 35.0.3
-#
-# Allow Ubuntu packaging suffixes such as:
-#   ~noble1
-#   ~jammy1
-#
-# Fail if no matching package exists.
+# Preserve version 35.0.3.
+# Fail if no matching version is available.
 # ------------------------------------------------------------
 ARG NEXTCLOUD_VERSION=35.0.3
 
@@ -110,11 +116,10 @@ RUN set -eux; \
       | sort -V \
       | tail -1)"; \
     if [ -z "$VERSION" ]; then \
-      echo "ERROR: Nextcloud Desktop ${NEXTCLOUD_VERSION} is unavailable"; \
+      echo "ERROR: Nextcloud ${NEXTCLOUD_VERSION} unavailable"; \
       apt-cache policy nextcloud-desktop-cmd; \
       exit 1; \
     fi; \
-    echo "Installing nextcloud-desktop-cmd=${VERSION}"; \
     apt-get install -y --no-install-recommends \
       "nextcloud-desktop-cmd=${VERSION}"; \
     apt-get clean; \
@@ -123,6 +128,9 @@ RUN set -eux; \
 
 # ------------------------------------------------------------
 # TurboVNC
+#
+# Keep verified existing package URL.
+# Upgrade to 3.3.1 after validating the .deb asset.
 # ------------------------------------------------------------
 COPY --from=downloads \
     /artifacts/turbovnc.deb /tmp/turbovnc.deb
@@ -138,37 +146,34 @@ RUN set -eux; \
 
 
 # ------------------------------------------------------------
-# Hatch, yq and jq
+# Verified yq and jq binaries
 # ------------------------------------------------------------
 COPY --from=downloads \
-    /artifacts/hatch /usr/local/bin/hatch
-
-COPY --from=downloads \
+    --chmod=755 \
     /artifacts/yq /usr/local/bin/yq
 
 COPY --from=downloads \
+    --chmod=755 \
     /artifacts/jq /usr/local/bin/jq
 
 
 # ------------------------------------------------------------
 # Nextcloud synchronization
 # ------------------------------------------------------------
-COPY nc-sync /usr/local/bin/nc-sync
+COPY --chmod=755 nc-sync \
+    /usr/local/bin/nc-sync
 
-COPY nc-sync.desktop \
+COPY --chmod=644 nc-sync.desktop \
     /etc/xdg/autostart/nc-sync.desktop
-
-RUN chmod 755 /usr/local/bin/nc-sync
 
 
 # ------------------------------------------------------------
 # Python dependencies
 #
-# requirements-py313.lock must contain pinned versions.
-#
-# Fix Conda permissions before installing as NB_USER.
+# Preserve pinned project dependency lock.
+# Install as NB_USER after fixing Conda permissions.
 # ------------------------------------------------------------
-COPY requirements-py313.lock \
+COPY --chmod=644 requirements-py313.lock \
     /tmp/requirements-py313.lock
 
 USER root
@@ -187,12 +192,29 @@ RUN set -eux; \
 
 
 # ------------------------------------------------------------
+# Hatch 1.18.1
+#
+# Use Python package distribution rather than an
+# unverified standalone executable.
+#
+# This may update shared Python dependencies, so
+# run pip check and test Jupyter compatibility.
+# ------------------------------------------------------------
+ARG HATCH_VERSION=1.18.1
+
+RUN set -eux; \
+    /opt/conda/bin/python -m pip install \
+      --no-cache-dir \
+      "hatch==${HATCH_VERSION}"; \
+    /opt/conda/bin/python -m pip check; \
+    hatch --version
+
+
+# ------------------------------------------------------------
 # websockify native rebind.so
 #
-# Install after pip so that package upgrades cannot
-# overwrite the native integration.
-#
-# Do not hardcode Python 3.11 site-packages.
+# Copy after pip installations.
+# Do not hardcode Python site-packages version.
 # ------------------------------------------------------------
 USER root
 
@@ -213,15 +235,12 @@ RUN set -eux; \
 # ------------------------------------------------------------
 # Runtime EO dependency lock
 #
-# Used by injected init.sh ConfigMap to create
-# /workspace/.venv.
+# Used by injected init.sh ConfigMap to create:
+# /workspace/.venv
 # ------------------------------------------------------------
 RUN mkdir -p /opt/eo
 
-COPY requirements-runtime-py313.lock \
-    /opt/eo/requirements-runtime-py313.lock
-
-RUN chmod 644 \
+COPY --chmod=644 requirements-runtime-py313.lock \
     /opt/eo/requirements-runtime-py313.lock
 
 
@@ -235,11 +254,16 @@ RUN set -eux; \
 
 
 # ------------------------------------------------------------
-# User password (legacy compatibility)
+# Security hardening
+#
+# No hardcoded system password.
+# Disable root account password authentication.
+# Preserve Jupyter runtime user.
 # ------------------------------------------------------------
-ARG USERPWD=pass
-
-RUN echo "${NB_USER}:${USERPWD}" | chpasswd
+RUN set -eux; \
+    passwd -l root; \
+    chmod 755 /usr/local/bin/nc-sync; \
+    chmod 644 /etc/xdg/autostart/nc-sync.desktop
 
 
 # ------------------------------------------------------------
@@ -253,7 +277,8 @@ RUN set -eux; \
     yq --version; \
     jq --version; \
     nextcloudcmd --version; \
-    test -f /opt/conda/lib/rebind.so
+    test -f /opt/conda/lib/rebind.so; \
+    test -f /opt/eo/requirements-runtime-py313.lock
 
 
 # ------------------------------------------------------------
