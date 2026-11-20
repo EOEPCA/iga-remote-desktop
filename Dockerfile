@@ -9,8 +9,9 @@ FROM ubuntu:24.04 AS downloads
 ARG TARGETARCH=amd64
 
 ARG TURBOVNC_VERSION=3.2.1
+#TODO evaluate turbovc 3.3.1
 ARG YQ_VERSION=v4.54.3
-ARG JQ_VERSION=jq-1.8.1
+ARG JQ_VERSION=jq-1.8.2
 
 # Verified yq Linux amd64 release SHA256
 ARG YQ_SHA256=129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973
@@ -42,7 +43,7 @@ RUN set -eux; \
 # ============================================================
 # Stage 2: Jupyter EO development environment
 # ============================================================
-# Ubuntu 24.04 / Python 3.13
+# Ubuntu 24.04 LTS / Python 3.13
 #
 # Retained for compatibility with:
 # - Nextcloud Ubuntu PPA
@@ -99,7 +100,6 @@ RUN set -eux; \
 # Fail if no matching version is available.
 # ------------------------------------------------------------
 ARG NEXTCLOUD_VERSION=35.0.3
-
 RUN set -eux; \
     apt-get update -o Acquire::Retries=5; \
     add-apt-repository -y ppa:nextcloud-devs/client; \
@@ -192,7 +192,7 @@ RUN set -eux; \
 
 
 # ------------------------------------------------------------
-# Hatch 1.18.1
+# Hatch 1.18.2
 #
 # Use Python package distribution rather than an
 # unverified standalone executable.
@@ -200,7 +200,7 @@ RUN set -eux; \
 # This may update shared Python dependencies, so
 # run pip check and test Jupyter compatibility.
 # ------------------------------------------------------------
-ARG HATCH_VERSION=1.18.1
+ARG HATCH_VERSION=1.18.2
 
 RUN set -eux; \
     /opt/conda/bin/python -m pip install \
